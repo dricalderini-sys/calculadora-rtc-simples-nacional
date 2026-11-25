@@ -6,12 +6,11 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Recover;
-import org.springframework.retry.annotation.Retryable;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.retry.RetryTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -42,6 +41,9 @@ public class VersaoOfflineService {
     @Value("${versao.url}")
     private String urlVersaoRemota;
 
+    /** Espera entre uma tentativa de consulta e a seguinte, na inicialização. */
+    private Duration intervaloEntreTentativas = Duration.ofSeconds(2);
+
     private final VersaoService versaoService;
     private final RestTemplate restTemplate;
 
@@ -56,21 +58,27 @@ public class VersaoOfflineService {
                 .build();
     }
 
+    /**
+     * Compara as versões na subida, com até {@value #TENTATIVAS} tentativas
+     * ({@link RetryTemplate} do Spring Framework). Uma
+     * {@link IllegalArgumentException} não é repetida. Esgotadas as tentativas
+     * fica só o aviso no log: a subida do modo offline não depende da
+     * instalação online.
+     */
     @EventListener(ApplicationReadyEvent.class)
-    @Retryable(
-        maxAttempts = TENTATIVAS,
-        backoff = @Backoff(delay = 2000),
-        noRetryFor = {IllegalArgumentException.class}
-    )
     public void verificarVersaoNaInicializacao() {
-        // Sem tolerância a falha aqui: a exceção da consulta remota é o gatilho do @Retryable.
-        VersaoOfflineDomain status = VersaoOfflineDomain.de(versaoService.getVersao(), consultarVersaoRemota());
-        exibirStatusVersao(status);
-    }
-
-    @Recover
-    public void recuperarDeErroDeVersao(Exception e) {
-        log.warn("Não foi possível verificar versão remota após {} tentativas: {}", TENTATIVAS, e.getMessage());
+        RetryPolicy politica = RetryPolicy.builder()
+                .maxRetries(TENTATIVAS - 1L) // maxRetries conta só as repetições, sem a 1ª tentativa
+                .delay(intervaloEntreTentativas)
+                .excludes(IllegalArgumentException.class)
+                .build();
+        try {
+            // Sem tolerância a falha dentro do bloco: a exceção da consulta remota é o gatilho da retentativa.
+            new RetryTemplate(politica).invoke(() -> exibirStatusVersao(
+                    VersaoOfflineDomain.de(versaoService.getVersao(), consultarVersaoRemota())));
+        } catch (RuntimeException e) {
+            log.warn("Não foi possível verificar versão remota após {} tentativas: {}", TENTATIVAS, e.getMessage());
+        }
     }
 
     /**

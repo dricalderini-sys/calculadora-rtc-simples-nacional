@@ -4,53 +4,96 @@
 package br.gov.serpro.rtc.shared.util;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Utilitário centralizado de arredondamento para a Calculadora de Tributos da RTC.
+ * Política numérica centralizada da Calculadora RTC.
+ * <p>
+ * <b>ARQUIVO COMPARTILHADO.</b> Este arquivo é idêntico, byte a byte, na {@code api-regime-geral} e
+ * na {@code api-simples-nacional}. Alterá-lo exige alterar a cópia do outro projeto e a constante
+ * com o SHA-256 esperado no teste {@code Teste_ArredondamentoUtilsCopiaUnica} dos dois projetos.
+ * Não crie uma segunda classe utilitária de arredondamento: o que faltar entra aqui, nas duas
+ * cópias.
  * <p>
  * Regras:
- * <p>
  * <ul>
- *   <li>Todos os cálculos intermediários usam precisão de 8 casas decimais ({@link #PRECISAO_INTERNA}).</li>
- *   <li>O modo de arredondamento é HALF_EVEN (arredondamento bancário).</li>
- *   <li>O arredondamento final para apresentação ocorre exclusivamente na camada de serialização JSON,
- *       através dos métodos {@link #formatarMoeda}, {@link #formatarAliquota} e {@link #formatarQuantidade}
- *       (usados internamente pelos serializers Jackson).</li>
+ *   <li><b>Aritmética interna exata.</b> Soma, subtração, multiplicação e as conversões entre
+ *       percentual e fração ({@link #percentualParaFracao}, {@link #fracaoParaPercentual}) não
+ *       arredondam: em {@link BigDecimal} essas operações são exatas. Não há precisão interna de
+ *       escala fixa — 8 casas de uma fração como {@code 0.000186738…} preservam só 4 ou 5 dígitos
+ *       significativos e mudam centavos em parte relevante dos itens.</li>
+ *   <li><b>Divisão</b> é a única operação interna que pode não ter resultado finito; quando
+ *       necessária, usa {@link #CONTEXTO_DIVISAO} (dígitos significativos, não casas
+ *       decimais).</li>
+ *   <li><b>Cada número publicado é arredondado uma vez, no cálculo</b>, na casa do leiaute: valor
+ *       monetário por {@link #arredondarValorFiscal} (2 casas, tipo 13v2); alíquota por
+ *       {@link #arredondarAliquotaPublicada} (4 casas, tipo 3v2-4) ou {@link #arredondarAliquota}
+ *       (casas do documento). O objeto de resposta guarda o número final. Quais alíquotas cada
+ *       API arredonda antes de multiplicar a base está registrado na ADR003 de cada projeto.</li>
+ *   <li><b>Somas usam os valores publicados</b> ({@link #totalizar}): o total sempre fecha com a
+ *       soma dos itens, e a soma das partes fecha com o valor inteiro. Quando um valor é
+ *       repartido em parcelas, {@link #ratearValorFiscal} garante que as parcelas somem o
+ *       total.</li>
+ *   <li><b>Apresentação</b>: {@link #formatarMoeda}, {@link #formatarAliquota} e
+ *       {@link #formatarQuantidade} são usados pelos serializers. Para um número já arredondado no
+ *       cálculo, apenas formatam: o texto tem o mesmo valor do número guardado.</li>
+ *   <li><b>Modo de arredondamento</b>: HALF_EVEN ({@link #MODO}), conforme a ABNT NBR 5891 — quando
+ *       a parte descartada é exatamente meio, arredonda-se para o algarismo par. É convenção do
+ *       projeto; não há dispositivo legal que fixe o modo de arredondamento dos valores de
+ *       IBS/CBS. O art. 349, § 14, da LC 214/2025 trata apenas da fixação das alíquotas de
+ *       referência pelo Senado (arredondamento ao décimo de ponto percentual) e não se aplica ao
+ *       cálculo por operação.</li>
  * </ul>
  * <p>
- * Escalas de saída (aplicadas somente na apresentação):
- * <ul>
- *   <li>Valores monetários: 2 casas decimais → {@link #formatarMoeda}</li>
- *   <li>Alíquotas e percentuais: 2 a 4 casas decimais → {@link #formatarAliquota}</li>
- *   <li>Quantidades: 4 casas decimais ou inteiro → {@link #formatarQuantidade}</li>
- * </ul>
+ * PARÂMETROS (constantes deste arquivo — alterar exige revisar esta política; nada disso vive em
+ * banco ou em {@code application.yml}, para que o cálculo oficial não varie por ambiente):
+ * {@link #MODO}, {@link #ESCALA_VALOR_FISCAL}, {@link #ESCALA_ALIQUOTA_MIN},
+ * {@link #ESCALA_ALIQUOTA_MAX}, {@link #CONTEXTO_DIVISAO} e os limites de entrada
+ * ({@link #DIGITOS_INTEIROS_ALIQUOTA_ENTRADA}, {@link #CASAS_ALIQUOTA_ENTRADA},
+ * {@link #DIGITOS_INTEIROS_VALOR_ENTRADA}).
  * <p>
- * Ref.: art. 349, § 14, da LC 214/2025.
- *
- * @see br.gov.serpro.rtc.shared.serializer.BigDecimalTDec1302Serializer
- * @see br.gov.serpro.rtc.shared.serializer.BigDecimalTDec0302_04Serializer
- * @see br.gov.serpro.rtc.shared.serializer.BigDecimalTDec1104OpRTCSerializer
+ * Serializers que delegam a esta classe: {@code BigDecimalTDec1302Serializer},
+ * {@code BigDecimalTDec0302_04Serializer} e {@code BigDecimalTDec1104OpRTCSerializer} (os pacotes
+ * diferem entre os projetos).
  */
 public final class ArredondamentoUtils {
 
-    // ─── Constantes ────────────────────────────────────────────────────────────
+    // ─── Parâmetros ────────────────────────────────────────────────────────────
 
-    /** Precisão usada em TODOS os cálculos intermediários (8 casas decimais). */
-    public static final int PRECISAO_INTERNA = 8;
-
-    /** Modo de arredondamento padrão: HALF_EVEN (arredondamento bancário). */
+    /** Modo de arredondamento único: HALF_EVEN (ABNT NBR 5891). */
     public static final RoundingMode MODO = RoundingMode.HALF_EVEN;
 
-    /** Constante 100, usada em conversões de percentual para fator decimal. */
-    public static final BigDecimal CEM = new BigDecimal("100");
+    /** Casas decimais do valor fiscal (tipo 13v2 do leiaute). */
+    public static final int ESCALA_VALOR_FISCAL = 2;
 
-    /** Escala de apresentação para valores monetários (2 casas decimais). */
-    private static final int ESCALA_MOEDA = 2;
+    /** Mínimo de casas decimais na apresentação de alíquotas (tipo 3v2-4). */
+    public static final int ESCALA_ALIQUOTA_MIN = 2;
 
-    /** Escala máxima de apresentação para alíquotas (4 casas decimais). */
-    private static final int ESCALA_ALIQUOTA_MAX = 4;
+    /** Máximo de casas decimais de uma alíquota publicada (tipo 3v2-4). */
+    public static final int ESCALA_ALIQUOTA_MAX = 4;
+
+    /**
+     * Contexto de divisão: 34 dígitos SIGNIFICATIVOS (IEEE 754 decimal128), HALF_EVEN. Única
+     * fonte de arredondamento interno permitida, e só para divisões.
+     */
+    public static final MathContext CONTEXTO_DIVISAO = new MathContext(34, MODO);
+
+    /** Entrada: máximo de dígitos inteiros de uma alíquota em pontos percentuais (tipo 3v2-4). */
+    public static final int DIGITOS_INTEIROS_ALIQUOTA_ENTRADA = 3;
+
+    /**
+     * Entrada: máximo de casas decimais de uma alíquota em pontos percentuais, onde a API aceita
+     * a precisão integral da origem. Comporta a precisão integral do PGDAS (fração com até 28
+     * casas, ou seja, 26 em pontos percentuais) e limita o custo do cálculo.
+     */
+    public static final int CASAS_ALIQUOTA_ENTRADA = 34;
+
+    /** Entrada: máximo de dígitos inteiros de um valor monetário (tipo 13v2). */
+    public static final int DIGITOS_INTEIROS_VALOR_ENTRADA = 13;
 
     /** Escala de apresentação para quantidades (4 casas decimais). */
     private static final int ESCALA_QUANTIDADE = 4;
@@ -59,92 +102,124 @@ public final class ArredondamentoUtils {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    // ─── Arredondamento intermediário ──────────────────────────────────────────
+    // ─── Aritmética interna (exata) ────────────────────────────────────────────
 
-    /**
-     * Aplica arredondamento interno (8 casas, HALF_EVEN) a um valor.
-     * Usar em todos os resultados intermediários de cálculo.
-     */
-    public static BigDecimal arredondarInterno(BigDecimal valor) {
-        if (valor == null) {
+    /** Multiplicação exata (sem arredondamento); nulo se algum operando for nulo. */
+    public static BigDecimal multiplicar(BigDecimal v1, BigDecimal v2) {
+        if (v1 == null || v2 == null) {
             return null;
         }
-        return valor.setScale(PRECISAO_INTERNA, MODO);
+        return v1.multiply(v2);
     }
 
-    // ─── Operações aritméticas (com arredondamento interno) ────────────────────
-
-    /**
-     * Divide o valor por 100 com precisão interna (8 casas, HALF_EVEN).
-     * Uso típico: converter percentual (ex: 30) em fator decimal (ex: 0.30000000).
-     */
-    public static BigDecimal dividirPorCem(BigDecimal valor) {
-        if (valor == null) {
+    /** Subtração exata (sem arredondamento); nulo se algum operando for nulo. */
+    public static BigDecimal subtrair(BigDecimal v1, BigDecimal v2) {
+        if (v1 == null || v2 == null) {
             return null;
         }
-        return valor.divide(CEM, PRECISAO_INTERNA, MODO);
+        return v1.subtract(v2);
     }
 
     /**
-     * Divisão com precisão interna (8 casas, HALF_EVEN).
+     * Divisão com {@link #CONTEXTO_DIVISAO} (34 dígitos significativos, HALF_EVEN); nulo se
+     * algum operando for nulo. Use apenas quando o quociente puder não ser finito.
      */
     public static BigDecimal dividir(BigDecimal dividendo, BigDecimal divisor) {
         if (dividendo == null || divisor == null) {
             return null;
         }
-        return dividendo.divide(divisor, PRECISAO_INTERNA, MODO);
+        return dividendo.divide(divisor, CONTEXTO_DIVISAO);
     }
 
-    /**
-     * Multiplicação com precisão interna (8 casas, HALF_EVEN).
-     */
-    public static BigDecimal multiplicar(BigDecimal v1, BigDecimal v2) {
-        if (v1 == null || v2 == null) {
-            return null;
-        }
-        return v1.multiply(v2).setScale(PRECISAO_INTERNA, MODO);
-    }
-
-    /**
-     * Subtração com precisão interna (8 casas, HALF_EVEN).
-     */
-    public static BigDecimal subtrair(BigDecimal v1, BigDecimal v2) {
-        if (v1 == null || v2 == null) {
-            return null;
-        }
-        return v1.subtract(v2).setScale(PRECISAO_INTERNA, MODO);
-    }
-
-    /**
-     * Multiplica o valor por 100 (operação exata, sem arredondamento).
-     */
-    public static BigDecimal multiplicarPorCem(BigDecimal valor) {
-        if (valor == null) {
-            return null;
-        }
-        return valor.multiply(CEM);
-    }
-
-    /**
-     * Totaliza (soma) um stream de BigDecimal, sem arredondamento intermediário.
-     * O arredondamento ocorre somente na serialização.
-     */
+    /** Soma exata de um stream de valores (sem arredondamento). */
     public static BigDecimal totalizar(Stream<BigDecimal> valores) {
         return valores.reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    // ─── Formatação para apresentação (equivalentes aos Serializers) ───────────
+    /** Pontos percentuais → fração (ex.: {@code 1.25} → {@code 0.0125}), exata. */
+    public static BigDecimal percentualParaFracao(BigDecimal percentual) {
+        return percentual == null ? null : percentual.movePointLeft(2);
+    }
+
+    /** Fração → pontos percentuais (ex.: {@code 0.006132} → {@code 0.6132}), exata. */
+    public static BigDecimal fracaoParaPercentual(BigDecimal fracao) {
+        return fracao == null ? null : fracao.movePointRight(2);
+    }
+
+    // ─── Números publicados (um arredondamento por número, no cálculo) ─────────
+
+    /**
+     * Valor fiscal: o valor exato arredondado UMA vez a {@link #ESCALA_VALOR_FISCAL} casas com
+     * {@link #MODO}. É o valor que vai para o documento; somas e totais usam esses valores.
+     */
+    public static BigDecimal arredondarValorFiscal(BigDecimal valor) {
+        return valor == null ? null : valor.setScale(ESCALA_VALOR_FISCAL, MODO);
+    }
+
+    /**
+     * Alíquota publicada (pontos percentuais, tipo 3v2-4): a alíquota exata arredondada UMA vez a
+     * {@link #ESCALA_ALIQUOTA_MAX} casas com {@link #MODO}. Onde a política do projeto determina
+     * que o número publicado é o que entra na conta seguinte, é esta alíquota que multiplica a
+     * base.
+     */
+    public static BigDecimal arredondarAliquotaPublicada(BigDecimal aliquota) {
+        return aliquota == null ? null : aliquota.setScale(ESCALA_ALIQUOTA_MAX, MODO);
+    }
+
+    /**
+     * Alíquota do LEIAUTE de um documento: a alíquota (pontos percentuais) arredondada a
+     * {@code casas} casas com {@link #MODO}. Usada quando o documento exige um número de casas
+     * próprio — na NFS-e, 2 casas. {@code casas} nulo = precisão integral (sem mudança).
+     */
+    public static BigDecimal arredondarAliquota(BigDecimal aliquota, Integer casas) {
+        return aliquota == null || casas == null ? aliquota : aliquota.setScale(casas, MODO);
+    }
+
+    /**
+     * Rateio de um valor fiscal em parcelas que somam o total.
+     * <p>
+     * O total é a soma exata das parcelas, arredondada UMA vez ({@link #arredondarValorFiscal}).
+     * Cada parcela recebe o seu valor exato truncado no centavo; os centavos que faltam para o
+     * total vão, um a um, às parcelas de maior resto (empate: a de menor posição na lista). O
+     * resultado tem a mesma ordem da entrada, e a soma das parcelas devolvidas é igual ao total.
+     *
+     * @param parcelasExatas valores exatos de cada parcela, não negativos e não nulos
+     * @return parcelas com {@link #ESCALA_VALOR_FISCAL} casas, na ordem da entrada
+     */
+    public static List<BigDecimal> ratearValorFiscal(List<BigDecimal> parcelasExatas) {
+        final BigDecimal total = arredondarValorFiscal(totalizar(parcelasExatas.stream()));
+        final List<BigDecimal> parcelas = new ArrayList<>(parcelasExatas.size());
+        final List<BigDecimal> restos = new ArrayList<>(parcelasExatas.size());
+        final List<Integer> ordem = new ArrayList<>(parcelasExatas.size());
+        BigDecimal distribuido = BigDecimal.ZERO;
+        for (int i = 0; i < parcelasExatas.size(); i++) {
+            final BigDecimal exata = parcelasExatas.get(i);
+            final BigDecimal truncada = exata.setScale(ESCALA_VALOR_FISCAL, RoundingMode.DOWN);
+            parcelas.add(truncada);
+            restos.add(exata.subtract(truncada));
+            ordem.add(i);
+            distribuido = distribuido.add(truncada);
+        }
+        // maior resto primeiro; a ordenação é estável, então o empate fica com a menor posição
+        ordem.sort((a, b) -> restos.get(b).compareTo(restos.get(a)));
+        final BigDecimal centavo = BigDecimal.ONE.movePointLeft(ESCALA_VALOR_FISCAL);
+        final int centavosFaltantes = total.subtract(distribuido)
+                .movePointRight(ESCALA_VALOR_FISCAL).intValueExact();
+        for (int k = 0; k < centavosFaltantes; k++) {
+            final int posicao = ordem.get(k % ordem.size());
+            parcelas.set(posicao, parcelas.get(posicao).add(centavo));
+        }
+        return parcelas;
+    }
+
+    // ─── Formatação para apresentação (usada pelos serializers) ───────────────
     //
     // TODAS as conversões BigDecimal → String para saída JSON passam por aqui.
     // Nenhum outro arquivo deve chamar setScale() + toPlainString() diretamente.
-    //
-    // - formatarMoeda       (2 casas, HALF_EVEN)
-    // - formatarAliquota    (2-4 casas, HALF_EVEN)
-    // - formatarQuantidade  (4 casas ou inteiro)
 
     /**
-     * Formata um valor monetário: arredondamento HALF_EVEN com exatamente 2 casas decimais.
-     * Usar em TODOS os campos monetários (vCBS, vIBS, vIBSUF, vDif, vIS, etc.).
+     * Formata um valor monetário com exatamente 2 casas decimais. Um valor fiscal já arredondado
+     * no cálculo sai sem mudança; um valor com mais casas é arredondado com {@link #MODO}.
      * <p>
      * Equivalente Jackson: {@code BigDecimalTDec1302Serializer}
      *
@@ -152,7 +227,7 @@ public final class ArredondamentoUtils {
      * @return string com exatamente 2 casas decimais (ex: "804.37")
      */
     public static String formatarMoeda(BigDecimal value) {
-        return value.setScale(ESCALA_MOEDA, MODO).toPlainString();
+        return value.setScale(ESCALA_VALOR_FISCAL, MODO).toPlainString();
     }
 
     /**
@@ -167,6 +242,7 @@ public final class ArredondamentoUtils {
      *   <li>{@code formatarAliquota(0.2080)} → "0.208" (remove zeros, mantém mín. 2)</li>
      *   <li>{@code formatarAliquota(0.2000)} → "0.20" (remove zeros, garante mín. 2)</li>
      *   <li>{@code formatarAliquota(60.0000)} → "60.00" (mín. 2 casas)</li>
+     *   <li>{@code formatarAliquota(1.68393793783894…)} → "1.6839"</li>
      * </ul>
      *
      * @param value valor a formatar (não nulo)
@@ -175,8 +251,8 @@ public final class ArredondamentoUtils {
     public static String formatarAliquota(BigDecimal value) {
         BigDecimal scaled = value.setScale(ESCALA_ALIQUOTA_MAX, MODO);
         BigDecimal stripped = scaled.stripTrailingZeros();
-        if (stripped.scale() < ESCALA_MOEDA) {
-            stripped = stripped.setScale(ESCALA_MOEDA);
+        if (stripped.scale() < ESCALA_ALIQUOTA_MIN) {
+            stripped = stripped.setScale(ESCALA_ALIQUOTA_MIN);
         }
         return stripped.toPlainString();
     }

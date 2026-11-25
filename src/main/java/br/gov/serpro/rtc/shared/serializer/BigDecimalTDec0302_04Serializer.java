@@ -2,11 +2,10 @@ package br.gov.serpro.rtc.shared.serializer;
 
 import br.gov.serpro.rtc.shared.util.ArredondamentoUtils;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializerProvider;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.ValueSerializer;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 
 /**
@@ -16,10 +15,10 @@ import java.math.BigDecimal;
  * Thread-safe: delega para {@link ArredondamentoUtils#formatarAliquota(BigDecimal)}.
  * DecimalFormat não é thread-safe, mas o método formatarAliquota é sincronizado, garantindo segurança em ambientes multi-thread.
  */
-public class BigDecimalTDec0302_04Serializer extends JsonSerializer<BigDecimal> {
+public class BigDecimalTDec0302_04Serializer extends ValueSerializer<BigDecimal> {
 
     @Override
-    public void serialize(BigDecimal value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+    public void serialize(BigDecimal value, JsonGenerator gen, SerializationContext serializers) {
         if (value == null) {
             gen.writeNull();
         } else if (value.signum() < 0) {

@@ -12,9 +12,12 @@ package br.gov.serpro.rtc.api.simplesnacional.enumeration;
  * {@code INCONSISTENCIA_ENTRADA} e {@code FALHA_TECNICA}.
  *
  * <p>{@code NAO_CALCULADO} (NT 2026.005, seções 5.3.3 e 5.3.4, Observação 2):
- * o item tem {@code cAtivSN} ausente, desconhecido, fora de vigência ou
- * inadmissível para o tpDoc — o cálculo de IBS/CBS não é realizado (NÃO é erro)
- * e o {@code tribCalc} traz apenas {@code vRBSNitem} e {@code tpRBSN}.
+ * o cálculo de IBS/CBS do item não é realizado (NÃO é erro) e o
+ * {@code tribCalc} traz apenas {@code vRBSNitem} e {@code tpRBSN}. O item diz
+ * por quê em {@code motivoEstado} ({@link MotivoNaoCalculoSimplesEnum}): regime
+ * {@code SOMENTE_RECEITA}; {@code cAtivSN} ausente, desconhecido ou fora de
+ * vigência, ou inadmissível para o tpDoc; ou anexo sem a CBS na Tabela de
+ * Alíquotas Efetivas do Simples Nacional (cálculo assistido).
  *
  * <p>{@code NAO_IMPLEMENTADO}: o {@code cClassTrib} do item está vinculado, na
  * data do fato gerador, a tratamento tributário marcado como ainda não

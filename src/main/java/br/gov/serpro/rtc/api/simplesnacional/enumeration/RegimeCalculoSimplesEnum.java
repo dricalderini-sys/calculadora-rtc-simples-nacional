@@ -1,15 +1,17 @@
 package br.gov.serpro.rtc.api.simplesnacional.enumeration;
 
 /**
- * Regime de apuração do IBS/CBS que CALCULA neste endpoint, resolvido a partir
- * da combinação {@code CRT} × {@code tpRegimeIBSCBS} (NT 2026.005, seção 5.3.4).
+ * Regime de apuração do IBS/CBS que CALCULA no endpoint CLÁSSICO, resolvido a
+ * partir da combinação {@code CRT} × {@code tpRegimeIBSCBS} (NT 2026.005, seção
+ * 5.3.4).
  *
  * <p>
- * Este enum é apenas o DISCRIMINADOR tipado das combinações válidas; o
- * comportamento de cada regime (gera IBS ou não, destino dos valores devidos e
- * pendentes/suspensos) é parametrizado em banco, na tabela
- * {@code REGIME_APURACAO_SIMPLES_NACIONAL}, resolvida pela vigência da data do
- * fato gerador.
+ * Este enum é apenas o DISCRIMINADOR tipado das combinações válidas no
+ * clássico; a linha do regime (código neutro e comportamento: gera IBS ou não,
+ * destino dos valores devidos e pendentes/suspensos) vem da tabela de
+ * enquadramento, no vocabulário CRT, e da tabela
+ * {@code REGIME_APURACAO_SIMPLES_NACIONAL}, pela vigência da data do fato
+ * gerador. Os endpoints novos usam o enquadramento diretamente.
  *
  * <p>
  * Combinações fora deste enum são rejeitadas na validação global (HTTP 422):

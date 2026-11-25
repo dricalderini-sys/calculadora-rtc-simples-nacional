@@ -25,21 +25,24 @@ public enum ModoFatorR {
     NAO_APLICAVEL,
 
     /**
-     * Os dois anexos da atividade (sem e com Fator R) estão na configuração
-     * informada: a decisão de Fator R permanece em aberto (opcional).
+     * Os dois anexos da atividade (sem e com Fator R — para a 09, o Anexo V e o
+     * Anexo III, respectivamente) estão na configuração informada: a decisão de
+     * Fator R permanece em aberto (opcional).
      */
     OPCIONAL,
 
     /**
-     * O caminho do Fator R não está disponível: apenas o anexo sem Fator R está
-     * na configuração informada, ou nenhum dos dois está (nesse caso a
+     * O caminho do Fator R (fator "r" igual ou superior a 28%, anexo
+     * {@code anexoComFatorR}) não está disponível: apenas o anexo sem Fator R
+     * está na configuração informada, ou nenhum dos dois está (nesse caso a
      * atividade já vem com {@code disponivel == false}).
      */
     INDISPONIVEL,
 
     /**
-     * Apenas o anexo com Fator R está na configuração informada: se a atividade
-     * for selecionada, o caminho do Fator R é obrigatório.
+     * Apenas o anexo com Fator R ({@code anexoComFatorR}, fator "r" igual ou
+     * superior a 28%) está na configuração informada: se a atividade for
+     * selecionada, o caminho do Fator R é obrigatório.
      */
     OBRIGATORIO
 }

@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.annotation.JsonSerialize;
 
 import br.gov.serpro.rtc.shared.serializer.BigDecimalTDec1302Serializer;
 import br.gov.serpro.rtc.shared.util.ArredondamentoUtils;
@@ -28,7 +28,11 @@ import lombok.Builder;
  * (os demais campos ficam ausentes no {@code tribCalc} deles e são ignorados);
  * itens com erro não contribuem para nada.
  *
- * Todas as somas são feitas via {@link ArredondamentoUtils}.
+ * Todas as somas são feitas via {@link ArredondamentoUtils}, sobre os VALORES
+ * FISCAIS dos itens (já arredondados a 2 casas, uma única vez, no cálculo do
+ * item): a soma é exata e o total sempre fecha com a soma dos itens exibidos
+ * — os totais da NT (P35 a P39) são o somatório dos valores atribuídos aos
+ * itens.
  *
  * <p>Record com {@code @Builder} (8 componentes, construção condicional na
  * fábrica {@link #create(List)}).
@@ -78,6 +82,19 @@ public record TotalSimplesDomain(
         @JsonSerialize(using = BigDecimalTDec1302Serializer.class)
         @Schema(description = "vIBSSNtot + vCBSSNtot + totalIs (somente os valores devidos)")
         BigDecimal totalTributos) {
+
+    /**
+     * Total da operação: consolida os itens que têm {@code tribCalc}
+     * ({@code CALCULADO} e {@code NAO_CALCULADO}); itens com erro ou
+     * {@code NAO_IMPLEMENTADO} não contribuem. {@code null} quando nenhum item
+     * tem {@code tribCalc}.
+     */
+    public static TotalSimplesDomain totalizar(List<ObjetoSimplesDomain> objetos) {
+        List<ObjetoSimplesDomain> comTribCalc = objetos.stream()
+                .filter(objeto -> objeto.tribCalc() != null)
+                .toList();
+        return comTribCalc.isEmpty() ? null : create(comTribCalc);
+    }
 
     /**
      *

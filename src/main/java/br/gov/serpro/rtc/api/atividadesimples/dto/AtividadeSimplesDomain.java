@@ -34,7 +34,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * <p>
  *
  * Os campos {@code anexoSemFatorR} e {@code anexoComFatorR} são numerais romanos puros ({@code "I".."V"}), sem ressalvas.
- * As ressalvas ("menos ICMS", etc.) ficam apenas em {@code rotuloAnexo}.
+ * As ressalvas ("menos ICMS", etc.) ficam apenas em {@code rotuloAnexo}. Semântica (LC 123/2006, art. 18,
+ * §§ 5º-J e 5º-M; Resolução CGSN 190/2026): {@code anexoComFatorR} é o anexo quando o fator "r" é <b>igual ou
+ * superior a 28%</b> (para a 09, o Anexo III); {@code anexoSemFatorR} é o anexo quando o fator "r" é
+ * <b>inferior a 28%</b> (para a 09, o Anexo V) — ou o único anexo, quando a atividade não depende do fator "r".
  * <b>Ambos são anuláveis</b>: {@code anexoComFatorR} só é preenchido para a atividade sujeita ao Fator R (a 09), e
  * {@code anexoSemFatorR} é nulo na linha do código 90 (Operações não Tributáveis, NT 2026.005), que não possui
  * anexo de apuração e aparece na listagem como item normal (decisão deliberada).
@@ -93,13 +96,17 @@ public record AtividadeSimplesDomain(
                 example = "Prestação de serviços — Sujeitos ao Fator \"R\"")
         String descricao,
 
-        @Schema(description = "Anexo (romano puro) quando o Fator R NÃO é ultrapassado; null na linha do código 90 "
-                + "(Operações não Tributáveis), que não possui anexo de apuração",
-                example = "III", nullable = true)
+        @Schema(description = "Anexo (romano puro) quando o fator r é INFERIOR a 28%, ou quando a atividade não "
+                + "depende do fator r (é então o único anexo). Para a atividade 09 é o Anexo V (LC 123/2006, "
+                + "art. 18, § 5º-M). Null na linha do código 90 (Operações não Tributáveis), que não possui anexo "
+                + "de apuração",
+                example = "V", nullable = true)
         String anexoSemFatorR,
 
-        @Schema(description = "Anexo (romano puro) quando o Fator R é ultrapassado; null quando não depende de Fator R",
-                example = "V", nullable = true)
+        @Schema(description = "Anexo (romano puro) quando o fator r é IGUAL OU SUPERIOR a 28% (fator r atingido). "
+                + "Para a atividade 09 é o Anexo III (LC 123/2006, art. 18, § 5º-J). Null quando a atividade não "
+                + "depende do fator r",
+                example = "III", nullable = true)
         String anexoComFatorR,
 
         @Schema(description = "Indica se a atividade depende do Fator R (derivado: anexoComFatorR != null)", example = "true")

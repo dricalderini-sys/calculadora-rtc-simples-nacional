@@ -22,10 +22,16 @@ import org.springframework.test.context.TestPropertySource;
 import br.gov.serpro.rtc.api.atividadesimples.entity.AtividadeSimplesNacional;
 import br.gov.serpro.rtc.api.atividadesimples.repository.AtividadeSimplesRepository;
 import br.gov.serpro.rtc.api.simplesnacional.entity.RegimeApuracaoSimples;
+import br.gov.serpro.rtc.api.simplesnacional.entity.SituacaoIssParAliquotaSimples;
+import br.gov.serpro.rtc.api.simplesnacional.entity.TipoDfeCalculoSimples;
 import br.gov.serpro.rtc.api.simplesnacional.entity.TipoReceitaBrutaSimples;
 import br.gov.serpro.rtc.api.simplesnacional.entity.TransicaoAliquotaCompraGovSimples;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.DestinoValorSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.CodigoRegimeApuracaoSimplesEnum;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.RegimeCalculoSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.RegraAliquotaSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.TipoAliquotaSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.VocabularioRegimeSimplesEnum;
 import br.gov.serpro.rtc.api.simplesnacional.repository.ClassificacaoTributariaSimplesRepository;
 import br.gov.serpro.rtc.api.simplesnacional.repository.TransicaoAliquotaCompraGovSimplesRepository;
 import br.gov.serpro.rtc.api.simplesnacional.service.ParametroCalculoSimplesService;
@@ -64,18 +70,27 @@ class ParametrizacaoSimplesNacionalTest {
         // Tratamentos tributários com TRTR_IN_POSSUI_AJUSTE = 1 na carga atual:
         // monofasia de combustíveis (62xxxx), hidrocarbonetos (550023),
         // transferência de crédito/ajustes/documento específico/exclusão de BC
-        // (8xxxxx) e incorporação imobiliária (2210xx). Toda classificação da
+        // (8xxxxx, exceto documento específico 820001/820005/820008/820009)
+        // e incorporação imobiliária (2210xx). Toda classificação da
         // CBS vinculada a eles, vigente na data, é NAO_IMPLEMENTADO no cálculo.
         for (String codigo : List.of("550023", "620001", "620002", "620006", "620007", "800001", "800002",
-                "810001", "811001", "811003", "820001", "820005", "820008", "820009", "830001", "221002",
+                "810001", "811001", "811003", "830001", "221002",
                 "221004")) {
             assertTrue(classificacaoRepository.contarTratamentosNaoImplementados(codigo, DATA_PADRAO) > 0,
                     () -> "cClassTrib " + codigo + " deveria estar marcado como sem implementação em "
                             + DATA_PADRAO);
         }
+        // O tratamento 32 (documento específico) não possui ajuste na carga
+        // vigente: esses quatro códigos não levam a NAO_IMPLEMENTADO.
+        for (String codigo : List.of("820001", "820005", "820008", "820009")) {
+            assertEquals(0, classificacaoRepository.contarTratamentosNaoImplementados(codigo, DATA_PADRAO),
+                    () -> "cClassTrib " + codigo + " não deveria estar marcado como sem implementação");
+        }
         // Classificações implementadas (tributação integral, imunidade, tpRBSN
-        // 9 e 5) e código inexistente: contagem zero.
-        for (String codigo : List.of("000001", "410001", "010001", "222001", "999999")) {
+        // 9 e 5, tributação em documento específico 820xxx) e código
+        // inexistente: contagem zero.
+        for (String codigo : List.of("000001", "410001", "010001", "222001", "820001", "820002", "820003",
+                "820004", "820005", "820006", "820007", "820008", "820009", "999999")) {
             assertEquals(0, classificacaoRepository.contarTratamentosNaoImplementados(codigo, DATA_PADRAO),
                     () -> "cClassTrib " + codigo + " NÃO deveria estar marcado como sem implementação");
         }
@@ -182,6 +197,170 @@ class ParametrizacaoSimplesNacionalTest {
         assertEquals(destinoPendenteSuspenso, vigente.get().getDestinoPendenteSuspenso());
     }
 
+    // ─── V0067: características do cálculo por documento ───────────────────────
+
+    @Test
+    void tiposDeDocumento_caracteristicasDoCalculoPorDocumento() {
+        // Família CRT: vocabulário CRT, precisão integral, sem limite de itens, admite IS.
+        for (int tpDoc : List.of(55, 65, 57, 67, 63, 93, 62)) {
+            TipoDfeCalculoSimples documento = parametroService.buscarTipoDfeCalculo(tpDoc, DATA_PADRAO).orElseThrow();
+            assertEquals(VocabularioRegimeSimplesEnum.CRT, documento.getVocabularioRegime(), () -> "tpDoc " + tpDoc);
+            assertNull(documento.getCasasAliquotaCalculo(), () -> "tpDoc " + tpDoc);
+            assertNull(documento.getMaximoItens(), () -> "tpDoc " + tpDoc);
+            assertEquals(Boolean.TRUE, documento.getAdmiteImpostoSeletivo(), () -> "tpDoc " + tpDoc);
+        }
+        // NFS-e: vocabulário próprio, alíquota de 2 casas, 1 item, sem IS.
+        TipoDfeCalculoSimples nfse = parametroService.buscarTipoDfeCalculo(91, DATA_PADRAO).orElseThrow();
+        assertEquals(VocabularioRegimeSimplesEnum.NFSE, nfse.getVocabularioRegime());
+        assertEquals(2, nfse.getCasasAliquotaCalculo());
+        assertEquals(1, nfse.getMaximoItens());
+        assertEquals(Boolean.FALSE, nfse.getAdmiteImpostoSeletivo());
+        // Fora da whitelist: vazio.
+        assertTrue(parametroService.buscarTipoDfeCalculo(97, DATA_PADRAO).isEmpty());
+    }
+
+    // ─── V0067: enquadramento do regime ─────────────────────────────────────────
+
+    @Test
+    void enquadramentoDoRegime_onzeCombinacoesQueLevamAUmRegime() {
+        assertEnquadramentoCrt(1, null, CodigoRegimeApuracaoSimplesEnum.SN_PLENO);
+        assertEnquadramentoCrt(2, null, CodigoRegimeApuracaoSimplesEnum.SN_SUBLIMITE);
+        assertEnquadramentoCrt(1, 1, CodigoRegimeApuracaoSimplesEnum.SOMENTE_RECEITA);
+        assertEnquadramentoCrt(2, 1, CodigoRegimeApuracaoSimplesEnum.SOMENTE_RECEITA);
+        assertEnquadramentoCrt(3, 2, CodigoRegimeApuracaoSimplesEnum.PENDENTE);
+        assertEnquadramentoNfse(3, 1, CodigoRegimeApuracaoSimplesEnum.SN_PLENO);
+        assertEnquadramentoNfse(3, 2, CodigoRegimeApuracaoSimplesEnum.SN_SUBLIMITE);
+        assertEnquadramentoNfse(3, 3, CodigoRegimeApuracaoSimplesEnum.SOMENTE_RECEITA);
+        assertEnquadramentoNfse(4, 1, CodigoRegimeApuracaoSimplesEnum.PENDENTE);
+        assertEnquadramentoNfse(4, 2, CodigoRegimeApuracaoSimplesEnum.PENDENTE_SUBLIMITE);
+        assertEnquadramentoNfse(4, 3, CodigoRegimeApuracaoSimplesEnum.SOMENTE_RECEITA);
+    }
+
+    @Test
+    void enquadramentoDoRegime_combinacoesValidasSemLinha_foraDoEscopo() {
+        // CRT 3 sem tpRegime (regime normal), CRT 4 (MEI), opSimpNac 1 (não optante) e 2 (MEI).
+        assertTrue(enquadramentoCrt(3, null).isEmpty());
+        assertTrue(enquadramentoCrt(4, null).isEmpty());
+        for (int opSimpNac : List.of(1, 2)) {
+            for (int regAp = 1; regAp <= 3; regAp++) {
+                assertTrue(enquadramentoNfse(opSimpNac, regAp).isEmpty(), "opSimpNac " + opSimpNac);
+            }
+        }
+        // O vocabulário separa as linhas: a combinação da NFS-e não vale no vocabulário CRT.
+        assertTrue(parametroService.buscarRegimeApuracao(VocabularioRegimeSimplesEnum.CRT, null, null, 3, 1,
+                DATA_PADRAO).isEmpty());
+    }
+
+    @Test
+    void regimesDeApuracao_comportamentoPorCodigoNeutro() {
+        assertComportamento(enquadramentoNfse(4, 2).orElseThrow(), CodigoRegimeApuracaoSimplesEnum.PENDENTE_SUBLIMITE,
+                true, false, DestinoValorSimplesEnum.PENDENTE_SUSPENSO, DestinoValorSimplesEnum.ZERO);
+        RegimeApuracaoSimples somenteReceita = enquadramentoCrt(1, 1).orElseThrow();
+        assertEquals(CodigoRegimeApuracaoSimplesEnum.SOMENTE_RECEITA, somenteReceita.getCodigo());
+        assertEquals(Boolean.FALSE, somenteReceita.getCalculaTributos());
+        assertNull(somenteReceita.getGeraIbs());
+        assertNull(somenteReceita.getDestinoDevido());
+        assertNull(somenteReceita.getDestinoPendenteSuspenso());
+        // As três linhas de antes mantêm IDs e comportamento.
+        assertComportamento(enquadramentoCrt(1, null).orElseThrow(), CodigoRegimeApuracaoSimplesEnum.SN_PLENO, true,
+                true, DestinoValorSimplesEnum.DEVIDO, DestinoValorSimplesEnum.PENDENTE_SUSPENSO);
+        assertEquals(1L, enquadramentoCrt(1, null).orElseThrow().getId());
+        assertEquals(2L, enquadramentoCrt(2, null).orElseThrow().getId());
+        assertEquals(3L, enquadramentoCrt(3, 2).orElseThrow().getId());
+        // A NFS-e e o CRT chegam à MESMA linha do regime.
+        assertEquals(enquadramentoCrt(2, null).orElseThrow().getId(), enquadramentoNfse(3, 2).orElseThrow().getId());
+    }
+
+    private Optional<RegimeApuracaoSimples> enquadramentoCrt(int crt, Integer tpRegime) {
+        return parametroService.buscarRegimeApuracao(VocabularioRegimeSimplesEnum.CRT, crt, tpRegime, null, null,
+                DATA_PADRAO);
+    }
+
+    private Optional<RegimeApuracaoSimples> enquadramentoNfse(int opSimpNac, int regApIBSCBSSN) {
+        return parametroService.buscarRegimeApuracao(VocabularioRegimeSimplesEnum.NFSE, null, null, opSimpNac,
+                regApIBSCBSSN, DATA_PADRAO);
+    }
+
+    private void assertEnquadramentoCrt(int crt, Integer tpRegime, CodigoRegimeApuracaoSimplesEnum esperado) {
+        assertEquals(esperado, enquadramentoCrt(crt, tpRegime).map(RegimeApuracaoSimples::getCodigo).orElse(null),
+                () -> "CRT " + crt + " + tpRegimeIBSCBS " + tpRegime);
+    }
+
+    private void assertEnquadramentoNfse(int opSimpNac, int regAp, CodigoRegimeApuracaoSimplesEnum esperado) {
+        assertEquals(esperado, enquadramentoNfse(opSimpNac, regAp).map(RegimeApuracaoSimples::getCodigo).orElse(null),
+                () -> "opSimpNac " + opSimpNac + " + regApIBSCBSSN " + regAp);
+    }
+
+    private void assertComportamento(RegimeApuracaoSimples regime, CodigoRegimeApuracaoSimplesEnum codigo,
+            boolean calcula, boolean geraIbs, DestinoValorSimplesEnum devido, DestinoValorSimplesEnum pendente) {
+        assertEquals(codigo, regime.getCodigo());
+        assertEquals(calcula, regime.getCalculaTributos());
+        assertEquals(geraIbs, regime.getGeraIbs());
+        assertEquals(devido, regime.getDestinoDevido());
+        assertEquals(pendente, regime.getDestinoPendenteSuspenso());
+    }
+
+    // ─── V0067: efeito do tpRBSN na NFS-e ──────────────────────────────────────
+
+    @Test
+    void tiposDeReceitaBruta_linhasDaNfse() {
+        // NFS-e: só o tpRBSN 1 gera valor (fator 1, exige alíquota); os demais, zero e sem
+        // pendente/suspenso. Receita bruta e vedação para não tributável como no padrão.
+        for (int codigo : List.of(0, 1, 2, 3, 4, 5, 9)) {
+            TipoReceitaBrutaSimples padrao = parametroService.buscarTipoReceitaBruta(codigo, DATA_PADRAO).orElseThrow();
+            TipoReceitaBrutaSimples nfse = parametroService
+                    .buscarTipoReceitaBruta(codigo, VocabularioRegimeSimplesEnum.NFSE, DATA_PADRAO).orElseThrow();
+            assertNull(padrao.getVocabularioRegime(), () -> "padrão do tpRBSN " + codigo);
+            assertEquals(VocabularioRegimeSimplesEnum.NFSE, nfse.getVocabularioRegime(), () -> "tpRBSN " + codigo);
+            assertEquals(padrao.getDescricao(), nfse.getDescricao());
+            assertEquals(padrao.getCompoeReceita(), nfse.getCompoeReceita());
+            assertEquals(padrao.getVedadoNaoTributavel(), nfse.getVedadoNaoTributavel());
+            assertEquals(Boolean.FALSE, nfse.getImpostoSeletivoCompoeReceita());
+            assertEquals(Boolean.FALSE, nfse.getPendenteSuspenso(), () -> "tpRBSN " + codigo);
+            assertEquals(0, new BigDecimal(codigo == 1 ? "1" : "0").compareTo(nfse.getFatorReceita()),
+                    () -> "fator do tpRBSN " + codigo);
+            assertEquals(codigo == 1, nfse.getExigeAliquota(), () -> "exige alíquota no tpRBSN " + codigo);
+        }
+        // Vocabulário CRT não tem linhas próprias: vale a padrão.
+        assertNull(parametroService.buscarTipoReceitaBruta(4, VocabularioRegimeSimplesEnum.CRT, DATA_PADRAO)
+                .orElseThrow().getVocabularioRegime());
+    }
+
+    // ─── V0067: indicadores de ISS do catálogo e situações do par de alíquotas ─
+
+    @Test
+    void catalogoDeAtividades_indicadoresDeIss() {
+        Map<String, AtividadeSimplesNacional> porCodigo = atividadeRepository.buscarVigentes(DATA_PADRAO).stream()
+                .collect(Collectors.toMap(AtividadeSimplesNacional::getCAtivSN, Function.identity()));
+        List<String> comIss = List.of("07", "09", "10", "12", "13", "14");
+        List<String> comBeneficio = List.of("12", "13");
+        porCodigo.forEach((codigo, atividade) -> {
+            assertEquals(comIss.contains(codigo), atividade.getIssNoSimples(), () -> "ISS no Simples da " + codigo);
+            assertEquals(comBeneficio.contains(codigo), atividade.getAdmiteBeneficioMunicipal(),
+                    () -> "benefício municipal da " + codigo);
+        });
+    }
+
+    @Test
+    void situacoesDoIss_cargaConformeASecao6() {
+        List<SituacaoIssParAliquotaSimples> situacoes = parametroService.buscarSituacoesIssParAliquota(DATA_PADRAO);
+        assertEquals(10, situacoes.size());
+        Map<String, List<String>> porRegra = situacoes.stream()
+                .collect(Collectors.groupingBy(s -> s.getRegra().name(), Collectors.mapping(
+                        s -> s.getCampo() + "=" + s.getValor(), Collectors.toList())));
+        assertEquals(List.of("CRT=2", "regApIBSCBSSN=2", "regApTribSN=2", "regApTribSN=3"),
+                porRegra.get(RegraAliquotaSimplesEnum.ISS_FORA_DO_SIMPLES.name()));
+        assertEquals(List.of("tribISSQN=2", "tribISSQN=3", "tribISSQN=4"),
+                porRegra.get(RegraAliquotaSimplesEnum.ISS_NAO_INCIDE.name()));
+        assertEquals(List.of("tpBM=1"), porRegra.get(RegraAliquotaSimplesEnum.ISENCAO_MUNICIPAL.name()));
+        assertEquals(List.of("tpRetISSQN=2", "tpRetISSQN=3"), porRegra.get(RegraAliquotaSimplesEnum.ISS_RETIDO.name()));
+        for (SituacaoIssParAliquotaSimples situacao : situacoes) {
+            assertEquals(TipoAliquotaSimplesEnum.SEM_REDISTRIBUICAO, situacao.getTipoAliquota());
+            // A ordem gravada é o número da regra (posição no enum + 1).
+            assertEquals(situacao.getRegra().ordinal() + 1, situacao.getOrdem(), () -> "ordem de " + situacao);
+        }
+    }
+
     // ─── Transição de compra governamental (NT 2026.005, seção 5.3.3) ──────────
 
     /**
@@ -260,9 +439,11 @@ class ParametrizacaoSimplesNacionalTest {
         assertNull(naoTributavel.getAnexoSemFatorR());
         assertNull(naoTributavel.getAnexoComFatorR());
 
-        // A 09 é a única atividade sujeita ao Fator R (III sem o fator, V com).
-        assertEquals("III", porOrdem.get(9).getAnexoSemFatorR());
-        assertEquals("V", porOrdem.get(9).getAnexoComFatorR());
+        // A 09 é a única atividade sujeita ao Fator R: fator r >= 28% => Anexo III
+        // (anexoComFatorR); fator r < 28% => Anexo V (anexoSemFatorR) — LC 123/2006,
+        // art. 18, §§ 5º-J e 5º-M; Resolução CGSN 190/2026 (correção da V0061).
+        assertEquals("V", porOrdem.get(9).getAnexoSemFatorR());
+        assertEquals("III", porOrdem.get(9).getAnexoComFatorR());
         for (int ordem = 1; ordem <= 14; ordem++) {
             if (ordem != 9) {
                 assertNull(porOrdem.get(ordem).getAnexoComFatorR(),

@@ -1,12 +1,11 @@
 package br.gov.serpro.rtc.shared.serializer;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.exc.InvalidFormatException;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.IOException;
 import java.util.function.Function;
 
 /**
@@ -14,7 +13,7 @@ import java.util.function.Function;
  * mensagem padronizada de erro.
  */
 @Slf4j
-public class GenericCustomDeserializer<T> extends JsonDeserializer<T> {
+public class GenericCustomDeserializer<T> extends ValueDeserializer<T> {
 
     private final String pattern;
     private final String format;
@@ -32,8 +31,8 @@ public class GenericCustomDeserializer<T> extends JsonDeserializer<T> {
     }
 
     @Override
-    public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        final var value = p.getText();
+    public T deserialize(JsonParser p, DeserializationContext ctxt) {
+        final var value = p.getString();
 
         if (!value.matches(pattern)) {
             throw new InvalidFormatException(p, getFormattedMessage(p), value, type);
@@ -46,8 +45,8 @@ public class GenericCustomDeserializer<T> extends JsonDeserializer<T> {
         }
     }
 
-    private String getFormattedMessage(JsonParser p) throws IOException {
+    private String getFormattedMessage(JsonParser p) {
         return String.format("Campo '%s' [%s] inválido. Formato esperado: '%s'. Exemplo de valor: '%s'",
-                p.currentName(), p.getText(), format, example);
+                p.currentName(), p.getString(), format, example);
     }
 }

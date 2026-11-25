@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.annotation.JsonSerialize;
 
 import br.gov.serpro.rtc.shared.serializer.BigDecimalTDec0302_04Serializer;
 import br.gov.serpro.rtc.shared.serializer.BigDecimalTDec1302Serializer;
@@ -31,7 +31,7 @@ import lombok.Builder;
 @Builder
 @JsonInclude(NON_NULL)
 @JsonPropertyOrder({ "vRBSNitem", "tpRBSN", "tpRBSNDescricao", "vBC", "pIBSSN", "vIBSSN", "vIBSPendSusp", "pCBSSN",
-        "vCBSSN", "vCBSPendSusp", "IS", "totalItem" })
+        "vCBSSN", "vCBSPendSusp", "IS", "totalItem", "memoriaCalculo" })
 public record TributosSimplesDomain(
 
         @JsonProperty("vRBSNitem")
@@ -105,5 +105,8 @@ public record TributosSimplesDomain(
         @JsonSerialize(using = BigDecimalTDec1302Serializer.class)
         @Schema(description = "Total do item: vIBSSN + vCBSSN + IS.valor (somente os valores devidos; "
                 + "os pendentes/suspensos ficam fora)")
-        BigDecimal totalItem) {
+        BigDecimal totalItem,
+
+        @Schema(description = "Memória de cálculo da CBS e do IBS. Suprimida para item NAO_CALCULADO")
+        MemoriaCalculoSimplesDomain memoriaCalculo) {
 }

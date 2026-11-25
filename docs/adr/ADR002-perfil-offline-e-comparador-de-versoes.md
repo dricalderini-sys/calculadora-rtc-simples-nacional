@@ -25,8 +25,8 @@ A execução usa o comando `./mvnw spring-boot:run -Dspring-boot.run.profiles=of
 - A versão local vem de `VersaoService`, a mesma montagem do endpoint `GET /versao`, que existe em todos os perfis.
 - A versão remota é consultada no endpoint `/versao` da instalação apontada por `versao.url` (variável `VERSAO_URL`).
   Timeouts: `versao.connect-timeout` 5s e `versao.read-timeout` 10s.
-- Na inicialização (`ApplicationReadyEvent`), a consulta remota é anotada com `@Retryable` (3 tentativas, intervalo de 2000 ms).
-  Se todas falharem, o método `@Recover` registra um aviso e a aplicação continua.
+- Na inicialização (`ApplicationReadyEvent`), a consulta remota é repetida pelo `RetryTemplate` do Spring Framework
+  (3 tentativas, intervalo de 2000 ms). Se todas falharem, o serviço registra um aviso e a aplicação continua.
 - Em `GET /versao/status`, uma falha na consulta remota não gera erro: os campos remotos são devolvidos nulos.
 - Valores de porta e caminho do arquivo do perfil: `server.port` 8082, `server.servlet.context-path` `/api` e
   `management.server.port` 9103. O cabeçalho do arquivo cita outras portas (ver Notas).

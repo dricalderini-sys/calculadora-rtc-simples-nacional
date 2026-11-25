@@ -3,6 +3,7 @@ package br.gov.serpro.rtc.testesunitarios.simplesnacional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.math.BigDecimal;
 
@@ -11,8 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import br.gov.serpro.rtc.api.simplesnacional.entity.RegimeApuracaoSimples;
 import br.gov.serpro.rtc.api.simplesnacional.entity.TipoReceitaBrutaSimples;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.CodigoRegimeApuracaoSimplesEnum;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.DestinoValorSimplesEnum;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.EstadoItemSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.MotivoNaoCalculoSimplesEnum;
+import br.gov.serpro.rtc.api.simplesnacional.model.output.MotivoEstadoSimplesDomain;
 import br.gov.serpro.rtc.api.simplesnacional.model.output.TributosSimplesDomain;
 import br.gov.serpro.rtc.api.simplesnacional.service.SimplesNacionalCalculoService;
 import br.gov.serpro.rtc.api.simplesnacional.service.SimplesNacionalCalculoService.InsumoCalculoSimples;
@@ -107,9 +111,15 @@ class Teste_SimplesNacionalCalculoService {
             DestinoValorSimplesEnum destinoDevido, DestinoValorSimplesEnum destinoPendenteSuspenso) {
         RegimeApuracaoSimples regime = new RegimeApuracaoSimples();
         regime.setId((long) crt);
-        regime.setCrt(crt);
-        regime.setTpRegimeIBSCBS(tpRegime);
-        regime.setDescricao("CRT " + crt);
+        // Linhas da carga oficial, identificadas pelo código neutro (a combinação
+        // CRT × tpRegimeIBSCBS vive na tabela de enquadramento desde a V0067).
+        regime.setCodigo(switch (crt) {
+            case 1 -> CodigoRegimeApuracaoSimplesEnum.SN_PLENO;
+            case 2 -> CodigoRegimeApuracaoSimplesEnum.SN_SUBLIMITE;
+            default -> CodigoRegimeApuracaoSimplesEnum.PENDENTE;
+        });
+        regime.setCalculaTributos(true);
+        regime.setDescricao("CRT " + crt + (tpRegime != null ? " + tpRegimeIBSCBS " + tpRegime : ""));
         regime.setGeraIbs(geraIbs);
         regime.setDestinoDevido(destinoDevido);
         regime.setDestinoPendenteSuspenso(destinoPendenteSuspenso);
@@ -125,7 +135,7 @@ class Teste_SimplesNacionalCalculoService {
 
     private InsumoCalculoSimples insumo(RegimeApuracaoSimples regime, TipoReceitaBrutaSimples tipoReceita,
             String base, String vIs, String pIbs, String pCbs, Integer tpEnteGov, String fatorTransicao) {
-        return new InsumoCalculoSimples(regime, tipoReceita, true,
+        return new InsumoCalculoSimples(regime, tipoReceita, null,
                 new BigDecimal(base), new BigDecimal(vIs),
                 pIbs != null ? new BigDecimal(pIbs) : null,
                 pCbs != null ? new BigDecimal(pCbs) : null,
@@ -174,9 +184,11 @@ class Teste_SimplesNacionalCalculoService {
         TributosSimplesDomain trib = calcular(
                 insumo(regimeCrt1(), 1, "950.00", "50.00", "1.25", "2.75", null, null));
         assertValor("950.00", trib.vRBSNitem());
-        assertValor("11.875", trib.vIBSSN());
+        // Valores fiscais (um único arredondamento, HALF_EVEN): 11,875 → 11,88 e
+        // 26,125 → 26,12; o totalItem soma os valores fiscais (11,88 + 26,12 + 50).
+        assertValor("11.88", trib.vIBSSN());
         assertValor("0.00", trib.vIBSPendSusp());
-        assertValor("26.125", trib.vCBSSN());
+        assertValor("26.12", trib.vCBSSN());
         assertValor("0.00", trib.vCBSPendSusp());
         assertValor("50.00", trib.IS().valor());
         assertValor("88.00", trib.totalItem());
@@ -376,14 +388,17 @@ class Teste_SimplesNacionalCalculoService {
 
     @Test
     void caso18_cAtivSNInvalido_naoCalculado_somenteReceitaBrutaETipo() {
+        MotivoEstadoSimplesDomain motivo = MotivoNaoCalculoSimplesEnum.CATIVSN_DESCONHECIDO.motivo("99");
         InsumoCalculoSimples semAtividade = new InsumoCalculoSimples(
-                regimeCrt1(), tipoReceita(1), false,
+                regimeCrt1(), tipoReceita(1), motivo,
                 new BigDecimal("1000.00"), new BigDecimal("0.00"),
                 new BigDecimal("1.25"), new BigDecimal("2.75"), null, null);
 
         ResultadoCalculoSimples resultado = service.calcularItem(semAtividade);
 
         assertEquals(EstadoItemSimplesEnum.NAO_CALCULADO, resultado.estadoItem());
+        // O motivo resolvido por quem montou o insumo vai para o resultado.
+        assertSame(motivo, resultado.motivoEstado());
         TributosSimplesDomain trib = resultado.tribCalc();
         assertValor("1000.00", trib.vRBSNitem());
         assertEquals(1, trib.tpRBSN());

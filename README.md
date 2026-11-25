@@ -34,7 +34,7 @@ Todos os caminhos começam com `http://localhost:8082/api`. A lista completa, co
 
 ### Requisitos do Sistema
 
-- **Java**: versão 21 ou superior
+- **Java**: versão 25
 - **Maven**: não precisa ser instalado; o Maven Wrapper (`mvnw` / `mvnw.cmd`) baixa a versão necessária na primeira execução (requer internet)
 - **Git**: para clonar o repositório
 - **Sistema Operacional**: Windows, macOS ou Linux
@@ -43,18 +43,17 @@ Todos os caminhos começam com `http://localhost:8082/api`. A lista completa, co
 
 O projeto utiliza as seguintes tecnologias:
 
-- **Spring Boot 3.5.16**: Framework principal da aplicação web
+- **Spring Boot 4.1.2**: Framework principal da aplicação web
 - **SQLite**: Banco de dados embarcado
 - **Flyway**: Migração e versionamento do banco de dados
-- **OpenAPI / Springdoc 2.8.9**: Documentação interativa da API
-
+- **Springdoc OpenAPI 3.2.0**: Documentação interativa da API (especificação OpenAPI 3.1)
 ---
 
 ## Instruções de Instalação
 
 ### 1. Pré-requisitos
 
-Certifique-se de ter instalado o Java 21 ou superior e verifique as versões:
+Certifique-se de ter instalado o Java 25 ou superior e verifique as versões:
 
 ```bash
 # Verificar versão do Java
@@ -72,11 +71,11 @@ cd calculadora-rtc-simples-nacional
 
 O perfil `offline` lê o banco `./calculadora/db/calculadora-pro.db`, definido por `application.db.filename` em `application-offline.yml`. O caminho é relativo à raiz do projeto e o banco é aberto em modo somente leitura.
 
-> **Atenção:** use os scripts SQL para gerar o arquivo do Banco de Dados localizados no repositório https://github.com/ReceitaFederal/calculadora-rtc-simples-nacional.git
+> **Atenção:** use os scripts SQL para gerar o arquivo do Banco de Dados localizados no repositório https://github.com/ReceitaFederal/calculadora-rtc-regime-regular
 
 > **Atenção:** a aplicação só funciona se o banco estiver gerado. Sem ele, o perfil offline não inicia.
 
-Copie para a raiz deste projeto a pasta flyway/ presente no repositório https://github.com/ReceitaFederal/calculadora-rtc-simples-nacional.git
+Copie para a raiz deste projeto a pasta flyway/ presente no repositório https://github.com/ReceitaFederal/calculadora-rtc-regime-regular
 
 **Linux/macOS:**
 
@@ -128,7 +127,7 @@ O relatório de cobertura fica em `target/site/jacoco/index.html`.
 mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=offline"
 ```
 
-A aplicação estará disponível em `http://localhost:8080/api`.
+A API estará disponível em `http://localhost:8082/api`; as métricas ficam disponíveis em `http://localhost:9103/metrics`.
 
 ### 6. Gerar o JAR e Executar com java -jar (perfil offline)
 
@@ -136,14 +135,14 @@ A aplicação estará disponível em `http://localhost:8080/api`.
 
 ```bash
 ./mvnw clean package
-java -Dspring.profiles.active=offline -jar target/api-regime-geral.jar
+java -Dspring.profiles.active=offline -jar target/api-simples-nacional.jar
 ```
 
 **Windows:**
 
 ```bat
 mvnw.cmd clean package
-java "-Dspring.profiles.active=offline" -jar target\api-regime-geral.jar
+java "-Dspring.profiles.active=offline" -jar target\api-simples-nacional.jar
 ```
 
 Execute o JAR a partir da raiz do projeto, para que `./calculadora/db` seja encontrado.

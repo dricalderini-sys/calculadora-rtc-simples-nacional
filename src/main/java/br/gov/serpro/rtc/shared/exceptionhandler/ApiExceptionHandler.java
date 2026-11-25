@@ -3,6 +3,7 @@
  */
 package br.gov.serpro.rtc.shared.exceptionhandler;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 
@@ -48,6 +49,8 @@ import lombok.extern.slf4j.Slf4j;
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
+    private static final URI TYPE_PADRAO = URI.create("about:blank");
+
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(@NonNull Exception ex, @Nullable Object body, @NonNull HttpHeaders headers,
             @NonNull HttpStatusCode statusCode, @NonNull WebRequest request) {
@@ -65,7 +68,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                      request.getDescription(false));
         }
 
-        return super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        ResponseEntity<Object> resposta = super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        // O Spring Framework 7 deixou de preencher o "type" padrão (RFC 9457: ausente equivale a
+        // "about:blank"). Preenchido aqui para o corpo dos erros continuar com o campo.
+        if (resposta != null && resposta.getBody() instanceof ProblemDetail problema && problema.getType() == null) {
+            problema.setType(TYPE_PADRAO);
+        }
+        return resposta;
     }
 
     @Override

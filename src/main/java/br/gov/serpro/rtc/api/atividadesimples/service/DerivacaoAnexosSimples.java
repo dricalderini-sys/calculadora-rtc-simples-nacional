@@ -43,9 +43,13 @@ public final class DerivacaoAnexosSimples {
 
     /**
      * Deriva {@code disponivel}, {@code anexosFaltantes} e {@code modoFatorR}
-     * para uma atividade cujos anexos são {@code anexoSemFatorR} e
-     * {@code anexoComFatorR} (ambos anuláveis; ambos nulos = atividade sem
-     * anexo — ex.: código 90 —, sempre disponível).
+     * para uma atividade cujos anexos são {@code anexoSemFatorR} (anexo quando
+     * o fator "r" é inferior a 28%, ou o único anexo da atividade) e
+     * {@code anexoComFatorR} (anexo quando o fator "r" é igual ou superior a
+     * 28%) — ambos anuláveis; ambos nulos = atividade sem anexo (ex.: código
+     * 90), sempre disponível. Na carga oficial a atividade 09 tem
+     * {@code anexoSemFatorR = "V"} e {@code anexoComFatorR = "III"}; a regra
+     * aqui é independente dos valores concretos.
      *
      * @throws IllegalStateException se {@code anexoComFatorR != null} com
      *         {@code anexoSemFatorR == null} — não existe atividade "só com

@@ -45,6 +45,29 @@ public class ItemCollectorSimples {
     }
 
     /**
+     * Acumula um erro de validação de entrada do item cujo campo fica FORA do
+     * item — por exemplo, a alíquota exigida pelo item e ausente na linha de
+     * alíquotas da operação ({@code #/aliquotasEfetivas/anexoIII/pCBSSN}).
+     * Mesmo efeito de {@link #addErroValidacao} sobre o estado.
+     *
+     * @param codigo   código {@code VSN-} catalogado
+     * @param ponteiro JSON Pointer completo do campo (começa com {@code #/})
+     * @param detail   mensagem de detalhe
+     */
+    public void addErroValidacaoNoPonteiro(CodigoValidacaoSimples codigo, String ponteiro, String detail) {
+        if (estado == EstadoItemSimplesEnum.CALCULADO) {
+            estado = EstadoItemSimplesEnum.INCONSISTENCIA_ENTRADA;
+        }
+        erros.add(new ErroDetalhe(buildTypeURI(codigo.getCode()), codigo.getTitulo(), codigo.getCode(), ponteiro,
+                detail));
+    }
+
+    /** Índice do item na lista de entrada (base dos ponteiros {@code #/itens/N}). */
+    public int getIndex() {
+        return index;
+    }
+
+    /**
      * Registra que o item não pode ser calculado por falta de implementação na
      * Calculadora (cClassTrib vinculado, na data do fato gerador, a tratamento
      * tributário marcado como "sem implementação"), definindo o estado como

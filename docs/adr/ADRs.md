@@ -47,8 +47,6 @@ proposição de uma decisão até sua aceitação.
 
 [ADR004 - Estratégia de Tratamento de Erros](./ADR004-estrategia-de-tratamento-de-erros.md)
 
-[ADR005 - Adoção de Spring Boot 3 e Java 21](./ADR005-adocao-spring-boot-3-java-21.md)
-
 [ADR006 - Documentação de API com SpringDoc OpenAPI](./ADR006-documentacao-api-com-springdoc.md)
 
 [ADR007 - Estratégia de Cache com Caffeine](./ADR007-estrategia-de-cache-com-caffeine.md)
@@ -62,6 +60,13 @@ proposição de uma decisão até sua aceitação.
 [ADR011 - Modelo de Estado do Fator R](./ADR011-modelo-de-estado-do-fator-r.md)
 
 [ADR012 - Segurança e CORS](./ADR012-seguranca-e-cors.md)
+
+[ADR013 - Migração para Spring Boot 4 e Java 25](./ADR013-migracao-spring-boot-4-java-25.md)
+
+## Substituídos
+
+[ADR005 - Adoção de Spring Boot 3 e Java 21](./ADR005-adocao-spring-boot-3-java-21.md)
+— substituído pelo [ADR013](./ADR013-migracao-spring-boot-4-java-25.md), com o registro original preservado.
 
 ## Propostos
 

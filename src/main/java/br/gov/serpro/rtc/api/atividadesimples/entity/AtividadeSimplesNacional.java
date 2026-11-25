@@ -43,12 +43,21 @@ public class AtividadeSimplesNacional {
     private String descricao;
 
     /**
-     * Anexo aplicável quando o Fator R não é ultrapassado. Anulável: a linha de
+     * Anexo aplicável quando o fator "r" é INFERIOR a 28% — ou quando a
+     * atividade não depende do fator "r" (é então o seu único anexo). Na carga
+     * oficial, a atividade 09 tem aqui o Anexo V (LC 123/2006, art. 18, § 5º-M;
+     * Resolução CGSN 190/2026, cabeçalho do Anexo V). Anulável: a linha de
      * operações não tributáveis (código 90) não possui anexo de apuração.
      */
     @Column(name = "ATSN_ANEXO_SEM_FATOR_R")
     private String anexoSemFatorR;
 
+    /**
+     * Anexo aplicável quando o fator "r" é IGUAL OU SUPERIOR a 28% (fator "r"
+     * atingido). Preenchido apenas para a atividade sujeita ao fator "r" (a 09,
+     * com o Anexo III — LC 123/2006, art. 18, § 5º-J; Resolução CGSN 190/2026,
+     * cabeçalho do Anexo III); nulo nas demais.
+     */
     @Column(name = "ATSN_ANEXO_COM_FATOR_R")
     private String anexoComFatorR;
 
@@ -85,5 +94,24 @@ public class AtividadeSimplesNacional {
     @NotNull
     @Column(name = "ATSN_IN_NAO_TRIBUTAVEL")
     private Boolean naoTributavel;
+
+    /**
+     * {@code true}: o percentual do ISS entra no cálculo do Simples da
+     * atividade (carga: 07, 09, 10, 12, 13 e 14). Sem ISS no Simples, o item
+     * usa o par de alíquotas sem redistribuição do ISS e não exige
+     * {@code tribISSQN} nem {@code tpRetISSQN}.
+     */
+    @NotNull
+    @Column(name = "ATSN_IN_ISS_NO_SIMPLES")
+    private Boolean issNoSimples;
+
+    /**
+     * {@code true}: a atividade admite benefício municipal do ISS ({@code tpBM};
+     * carga: 12 e 13 — regra E0536 da NFS-e, subitens 7.02 e 7.05). Nas demais,
+     * o {@code tpBM} informado é desconsiderado, com aviso.
+     */
+    @NotNull
+    @Column(name = "ATSN_IN_ADMITE_BENEFICIO_MUNICIPAL")
+    private Boolean admiteBeneficioMunicipal;
 
 }

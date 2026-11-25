@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import br.gov.serpro.rtc.api.atividadesimples.entity.AtividadeSimplesNacional;
 import br.gov.serpro.rtc.api.simplesnacional.entity.ClassificacaoTributariaSimples;
+import br.gov.serpro.rtc.api.simplesnacional.entity.TipoDfeCalculoSimples;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.EstadoItemSimplesEnum;
 import br.gov.serpro.rtc.api.simplesnacional.enumeration.RegimeCalculoSimplesEnum;
 import br.gov.serpro.rtc.shared.exceptionhandler.ErrosCalculoException;
@@ -37,10 +38,15 @@ import br.gov.serpro.rtc.api.simplesnacional.model.input.OperacaoSimplesInput;
 import br.gov.serpro.rtc.api.simplesnacional.model.output.ObjetoSimplesDomain;
 import br.gov.serpro.rtc.api.simplesnacional.model.output.ObservabilidadeSimplesDomain;
 import br.gov.serpro.rtc.api.simplesnacional.repository.AtividadeSimplesCalculoRepository;
+import br.gov.serpro.rtc.api.simplesnacional.repository.TipoDfeCalculoSimplesRepository;
+import br.gov.serpro.rtc.domain.service.ValidacaoNomenclaturaService;
+import br.gov.serpro.rtc.domain.service.NcmService;
+import br.gov.serpro.rtc.domain.service.NbsService;
 import br.gov.serpro.rtc.api.simplesnacional.repository.ClassificacaoTributariaSimplesRepository;
 import br.gov.serpro.rtc.api.simplesnacional.service.ParametroCalculoSimplesService;
 import br.gov.serpro.rtc.api.simplesnacional.service.SimplesNacionalCalculoService;
 import br.gov.serpro.rtc.api.simplesnacional.service.SimplesNacionalObservabilidadeService;
+import br.gov.serpro.rtc.api.simplesnacional.adapter.ValidacaoNomenclaturaAdapter;
 
 /**
  * Testes unitários do serviço de observabilidade do Simples Nacional — casos
@@ -76,13 +82,20 @@ class Teste_SimplesNacionalObservabilidadeService {
     @Mock
     private ParametroCalculoSimplesService parametroService;
 
+    @Mock private ValidacaoNomenclaturaService validacaoNomenclaturaService;
+    @Mock private TipoDfeCalculoSimplesRepository tipoDfeRepository;
+    @Mock private NcmService ncmService;
+    @Mock private NbsService nbsService;
+
     private SimplesNacionalObservabilidadeService service;
 
     @BeforeEach
     void setup() {
         service = new SimplesNacionalObservabilidadeService(
                 new SimplesNacionalCalculoService(), parametroService,
-                classificacaoRepository, atividadeCalculoRepository);
+                classificacaoRepository, atividadeCalculoRepository,
+                new ValidacaoNomenclaturaAdapter(ncmService, nbsService, validacaoNomenclaturaService),
+                tipoDfeRepository);
 
         // Comportamento padrão da fachada de parâmetros: a carga oficial.
         // (lenient: nem todo teste exercita todos os stubs.)
@@ -91,6 +104,19 @@ class Teste_SimplesNacionalObservabilidadeService {
                     int tpDoc = inv.getArgument(0);
                     return tpDoc == 55 || tpDoc == 65;
                 });
+        lenient().when(parametroService.buscarTipoDfeCalculo(anyInt(), any()))
+                .thenAnswer(inv -> {
+                    int tpDoc = inv.getArgument(0);
+                    TipoDfeCalculoSimples documento = new TipoDfeCalculoSimples();
+                    documento.setTipoDfeId((long) tpDoc);
+                    return Optional.of(documento);
+                });
+        lenient().when(tipoDfeRepository.buscarSiglaVigentePorId(any(), any()))
+                .thenAnswer(inv -> Optional.of(switch (((Long) inv.getArgument(0)).intValue()) {
+                    case 65 -> "NFCe";
+                    case 91 -> "NFSe";
+                    default -> "NFe";
+                }));
         lenient().when(parametroService.buscarTipoReceitaBruta(anyInt(), any()))
                 .thenAnswer(inv -> Optional.of(Teste_SimplesNacionalCalculoService.tipoReceita(inv.getArgument(0))));
         lenient().when(parametroService.buscarRegimeApuracao(any(), any()))
@@ -128,7 +154,7 @@ class Teste_SimplesNacionalObservabilidadeService {
 
     private ItemSimplesInput item(Integer numero, String cAtivSN, String cClassTrib,
             String pIbs, String pCbs) {
-        return new ItemSimplesInput(numero, cAtivSN, cClassTrib, "1000.00", "0.00", pIbs, pCbs);
+        return new ItemSimplesInput(numero, cAtivSN, cClassTrib, null, null, "1000.00", "0.00", pIbs, pCbs);
     }
 
     private ItemSimplesInput itemPadrao(String cAtivSN, String cClassTrib) {
@@ -376,7 +402,7 @@ class Teste_SimplesNacionalObservabilidadeService {
 
         ObservabilidadeSimplesDomain resultado = service.processarOperacao(
                 operacao(DATA_PADRAO, "55", "1", null,
-                        new ItemSimplesInput(1, "01", "800001", "-10.00", "0.00", null, null)), BASE_URL);
+                        new ItemSimplesInput(1, "01", "800001", null, null, "-10.00", "0.00", null, null)), BASE_URL);
 
         ObjetoSimplesDomain objeto = unicoObjeto(resultado);
         assertEquals(EstadoItemSimplesEnum.NAO_IMPLEMENTADO, objeto.estadoItem());
@@ -438,6 +464,9 @@ class Teste_SimplesNacionalObservabilidadeService {
 
         assertEquals(EstadoItemSimplesEnum.CALCULADO, unicoObjeto(resultado).estadoItem());
         verify(classificacaoRepository).contarTratamentosNaoImplementados(eq("000001"), any());
+        verify(tipoDfeRepository).buscarSiglaVigentePorId(55L, LocalDate.parse(DATA_PADRAO));
+        verify(validacaoNomenclaturaService).validar(eq(br.gov.serpro.rtc.domain.model.enumeration.SiglasDFeEnum.NFE),
+                eq(1L), eq("000001"), eq(null), eq(null), eq(LocalDate.parse(DATA_PADRAO)), eq("CBS e IBS"), any());
     }
 
     @Test
@@ -558,12 +587,12 @@ class Teste_SimplesNacionalObservabilidadeService {
 
     @Test
     void tpDocSemTratamento_rejeitadoGlobalmente() {
-        when(parametroService.tpDocSemTratamentoCalculadora(anyInt())).thenAnswer(inv -> {
+        when(parametroService.tpDocSemTratamentoCalculadora(anyInt(), any())).thenAnswer(inv -> {
             int tpDoc = inv.getArgument(0);
-            return tpDoc == 77 || tpDoc == 94;
+            return tpDoc == 77 || tpDoc == 94 || tpDoc == 95 || tpDoc == 96;
         });
 
-        for (String tpDoc : List.of("77", "94")) {
+        for (String tpDoc : List.of("77", "94", "95", "96")) {
             List<String> codigos = codigosDoErroGlobal(
                     operacao(DATA_PADRAO, tpDoc, "1", null, itemPadrao("01", "000001")));
             assertTrue(codigos.contains("VSN-015"), "tpDoc " + tpDoc);

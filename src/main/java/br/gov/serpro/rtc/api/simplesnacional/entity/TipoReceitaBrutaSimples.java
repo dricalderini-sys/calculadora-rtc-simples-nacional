@@ -5,8 +5,11 @@ import java.time.LocalDate;
 
 import org.hibernate.annotations.Immutable;
 
+import br.gov.serpro.rtc.api.simplesnacional.enumeration.VocabularioRegimeSimplesEnum;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
@@ -30,6 +33,13 @@ import lombok.EqualsAndHashCode;
  * tributáveis (regra UB14-90 da NT 2026.005);</li>
  * <li>a descrição oficial, exposta na saída da API (campo {@code tpRBSNDescricao}).</li>
  * </ul>
+ *
+ * <p>
+ * Linhas por vocabulário ({@code TRBS_VOCABULARIO_REGIME}): a linha PADRÃO tem
+ * vocabulário nulo (família CRT e endpoint clássico); a NFS-e tem linhas
+ * próprias (só o tpRBSN 1 gera valor, sem pendente/suspenso — AnexoVI, regras
+ * 203/204 e 207/208). A busca procura primeiro a linha do vocabulário do
+ * documento e, se não houver, a padrão.
  *
  * <p>
  * Tabela exclusiva do cálculo do Simples Nacional; mudanças de efeito são feitas por
@@ -98,6 +108,11 @@ public class TipoReceitaBrutaSimples {
     @NotNull
     @Column(name = "TRBS_IN_VEDADO_NAO_TRIBUTAVEL")
     private Boolean vedadoNaoTributavel;
+
+    /** Vocabulário da linha; nulo = linha padrão. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "TRBS_VOCABULARIO_REGIME")
+    private VocabularioRegimeSimplesEnum vocabularioRegime;
 
     @NotNull
     @Column(name = "TRBS_INICIO_VIGENCIA")

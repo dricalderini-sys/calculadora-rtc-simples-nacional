@@ -17,6 +17,9 @@ requisição. É necessário identificar cada erro de forma estável e indicar a
 
 - As respostas de erro usam `ProblemDetail` (formato de problem details, RFC 7807/9457), tratadas em
   [ApiExceptionHandler](../../src/main/java/br/gov/serpro/rtc/shared/exceptionhandler/ApiExceptionHandler.java).
+- Na migração para Spring Framework 7 ([ADR013](./ADR013-migracao-spring-boot-4-java-25.md)), o handler passou a preencher explicitamente
+  `type: "about:blank"` quando o framework não informa o tipo, preservando o campo no contrato
+  JSON dos erros.
 - `ErrosCalculoException` (em [ErrosCalculoException.java](../../src/main/java/br/gov/serpro/rtc/shared/exceptionhandler/ErrosCalculoException.java))
   é tratada por `handleErrosCalculoException`, com título "Erros no processamento do cálculo do Simples Nacional",
   a propriedade `errors` (lista de erros) e a propriedade `timestamp`.
@@ -41,6 +44,7 @@ Negativas:
 ## Notas
 
 - Introdução do tratamento com `ProblemDetail`: 24/07/2026.
+- Atualizado em 17/11/2026: preservação do `type` padrão na migração de plataforma.
 - O catálogo `CodigoValidacaoSimples` contém 32 ocorrências do prefixo `VSN-`.
 - Exemplo de uso: [SimplesNacionalObservabilidadeService](../../src/main/java/br/gov/serpro/rtc/api/simplesnacional/service/SimplesNacionalObservabilidadeService.java)
   lança `ErrosCalculoException` com `COMPRA_GOV_SEM_VIGENCIA` (comentário no código cita `VSN-025`) quando não há parametrização de transição vigente.

@@ -11,15 +11,15 @@ import java.util.List;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Testes de integração do endpoint de atividades × anexos do Simples
@@ -101,11 +101,13 @@ class AtividadeSimplesControllerTest {
                 .andExpect(jsonPath("$[1].disponivel").value(true))
                 .andExpect(jsonPath("$[1].anexosFaltantes", Matchers.empty()))
                 .andExpect(jsonPath("$[1].modoFatorR").value("NAO_APLICAVEL"))
-                // atividade 09 (III/V): só o caminho com Fator R está configurado
+                // atividade 09 (sem Fator R = V; com Fator R = III): com I e V configurados,
+                // só o caminho SEM Fator R (Anexo V) está disponível — o caminho com
+                // Fator R (Anexo III, fator r >= 28%) fica indisponível
                 .andExpect(jsonPath("$[8].codigo").value("09"))
                 .andExpect(jsonPath("$[8].disponivel").value(true))
                 .andExpect(jsonPath("$[8].anexosFaltantes", Matchers.contains("III")))
-                .andExpect(jsonPath("$[8].modoFatorR").value("OBRIGATORIO"))
+                .andExpect(jsonPath("$[8].modoFatorR").value("INDISPONIVEL"))
                 // atividade 05 (anexo III): não omitida, apenas marcada indisponível
                 .andExpect(jsonPath("$[4].codigo").value("05"))
                 .andExpect(jsonPath("$[4].disponivel").value(false))
@@ -121,6 +123,19 @@ class AtividadeSimplesControllerTest {
                 .andExpect(jsonPath("$[8].disponivel").value(true))
                 .andExpect(jsonPath("$[8].anexosFaltantes", Matchers.empty()))
                 .andExpect(jsonPath("$[8].modoFatorR").value("OPCIONAL"));
+    }
+
+    @Test
+    void deveMarcarFatorRObrigatorioQuandoSoOAnexoIIIEstaConfigurado() throws Exception {
+        // Só o Anexo III configurado: para a 09 é o anexo COM Fator R (fator
+        // r >= 28%) — o caminho do Fator R torna-se obrigatório e o Anexo V
+        // (sem Fator R) é o faltante.
+        mockMvc.perform(get(ENDPOINT).param("data", DATA_PADRAO).param("anexos", "III"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[8].codigo").value("09"))
+                .andExpect(jsonPath("$[8].disponivel").value(true))
+                .andExpect(jsonPath("$[8].anexosFaltantes", Matchers.contains("V")))
+                .andExpect(jsonPath("$[8].modoFatorR").value("OBRIGATORIO"));
     }
 
     @Test
@@ -452,12 +467,15 @@ class AtividadeSimplesControllerTest {
 
     @Test
     void deveExporAtividade9SujeitaAFatorR() throws Exception {
+        // Fator r >= 28% => Anexo III (anexoComFatorR); fator r < 28% => Anexo V
+        // (anexoSemFatorR) — LC 123/2006, art. 18, §§ 5º-J e 5º-M; Resolução CGSN
+        // 190/2026 (carga corrigida pela migração V0061).
         mockMvc.perform(get(ENDPOINT + "/09").param("data", DATA_PADRAO))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.codigo").value("09"))
                 .andExpect(jsonPath("$.ordem").value(9))
-                .andExpect(jsonPath("$.anexoSemFatorR").value("III"))
-                .andExpect(jsonPath("$.anexoComFatorR").value("V"))
+                .andExpect(jsonPath("$.anexoSemFatorR").value("V"))
+                .andExpect(jsonPath("$.anexoComFatorR").value("III"))
                 .andExpect(jsonPath("$.sujeitaFatorR").value(true))
                 .andExpect(jsonPath("$.rotuloAnexo").value("III ou V"))
                 .andExpect(jsonPath("$.rotuloCurtoAnexo").value("III ou V"))

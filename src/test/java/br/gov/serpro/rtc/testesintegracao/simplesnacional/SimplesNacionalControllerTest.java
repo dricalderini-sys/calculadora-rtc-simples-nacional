@@ -10,7 +10,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -606,9 +606,11 @@ class SimplesNacionalControllerTest {
     }
 
     @Test
-    void naoImplementadoTambemEmNfse() throws Exception {
-        // 820001 (tributação em documento específico) é admissível apenas em
-        // NFS-e (91) e está vinculado a tratamento "sem implementação".
+
+    void tributacaoEmDocumentoEspecificoCalculaEmNfseSemVsn027() throws Exception {
+        // 820001 é admissível em NFS-e, mas o tratamento 32 não possui ajuste
+        // na carga vigente. Portanto, o cálculo segue normalmente.
+
         String json = """
                 {
                   "id": "507f1f77bcf86cd799439011",
@@ -621,6 +623,51 @@ class SimplesNacionalControllerTest {
                       "numero": 1,
                       "cAtivSN": "07",
                       "cClassTrib": "820001",
+                      "baseCalculo": "1000.00",
+                      "valorImpostoSeletivo": "0.00",
+                      "pIBSSN": "1.25",
+                      "pCBSSN": "2.75"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post(ENDPOINT).contentType(MediaType.APPLICATION_JSON).content(json))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.objetos[0].estadoItem").value("CALCULADO"))
+            .andExpect(jsonPath("$.objetos[0].erros").doesNotExist())
+
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vRBSNitem").value("1000.00"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.tpRBSN").value(9))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.tpRBSNDescricao")
+                    .value("Fornecimento incompatível com SN"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vBC").value("0.00"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vIBSSN").value("0.00"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vCBSSN").value("0.00"))
+            .andExpect(jsonPath("$.total.vRBSNtot").value("1000.00"))
+
+            .andExpect(jsonPath("$.total.vBC").value("0.00"))
+            .andExpect(jsonPath("$.total.vIBSSNtot").value("0.00"))
+            .andExpect(jsonPath("$.total.vCBSSNtot").value("0.00"))
+            .andExpect(jsonPath("$.total.totalTributos").value("0.00"));
+    }
+
+    @Test
+    void naoImplementadoTambemEmNfse() throws Exception {
+        // 800001 (transferência de crédito) é admissível em NFS-e e mantém
+        // TRTR_IN_POSSUI_AJUSTE=1, preservando a cobertura VSN-027 nesse doc.
+        String json = """
+                {
+                  "id": "507f1f77bcf86cd799439011",
+                  "versao": "2.0.0",
+                  "data": "2027-03-15",
+                  "tpDoc": "91",
+                  "CRT": "1",
+                  "itens": [
+                    {
+                      "numero": 1,
+                      "cAtivSN": "07",
+                      "cClassTrib": "800001",
                       "baseCalculo": "1000.00",
                       "valorImpostoSeletivo": "0.00",
                       "pIBSSN": "1.25",
@@ -734,7 +781,7 @@ class SimplesNacionalControllerTest {
 
     @Test
     void deveRetornar422ParaTpDocSemTratamento() throws Exception {
-        for (String tpDoc : List.of("77", "94")) {
+        for (String tpDoc : List.of("77", "94", "95", "96")) {
             String json = """
                     {
                       "id": "abc",
@@ -849,5 +896,88 @@ class SimplesNacionalControllerTest {
         mockMvc.perform(get(ENDPOINT + "/erros")
                 .param("codigo", "VSN-008"))
             .andExpect(status().isNotFound());
+    }
+
+    // ─── Precisão: entrada integral, valores fiscais e totais ──────────────────
+
+    @Test
+    void aliquotaIntegralNaEntrada_eUsadaComTodasAsCasas_eApresentadaCom4() throws Exception {
+        // 987.654,32 × 1,6839379378389463610262954% = 16.631,49 (com 1,6839 seria 16.631,11).
+        mockMvc.perform(post(ENDPOINT).contentType(MediaType.APPLICATION_JSON)
+                .content(operacao("2027-04-15", item(1, "987654.32", "0.00", "0.01867380622521988789135487",
+                        "1.6839379378389463610262954"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.objetos[0].estadoItem").value("CALCULADO"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.pCBSSN").value("1.6839"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vCBSSN").value("16631.49"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.pIBSSN").value("0.0187"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vIBSSN").value("184.43"));
+    }
+
+    @Test
+    void totaisSaoASomaDosValoresFiscaisDosItens() throws Exception {
+        // Itens 1 e 2: 160,40 × 1,25% = 2,005 → 2,00 (HALF_EVEN) e 160,40 × 2,75% =
+        // 4,411 → 4,41; totalItem = 2,00 + 4,41 = 6,41. Item 3: 100,01 → 1,25 e 2,75.
+        // Os totais fecham com a soma dos itens exibidos (5,25, não 5,26).
+        mockMvc.perform(post(ENDPOINT).contentType(MediaType.APPLICATION_JSON)
+                .content(operacao("2027-04-15", item(1, "160.40", "0.00", "1.25", "2.75") + ","
+                        + item(2, "160.40", "0.00", "1.25", "2.75") + "," + item(3, "100.01", "0.00", "1.25", "2.75"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vIBSSN").value("2.00"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.vCBSSN").value("4.41"))
+            .andExpect(jsonPath("$.objetos[0].tribCalc.totalItem").value("6.41"))
+            .andExpect(jsonPath("$.objetos[2].tribCalc.totalItem").value("4.00"))
+            .andExpect(jsonPath("$.total.vIBSSNtot").value("5.25"))
+            .andExpect(jsonPath("$.total.vCBSSNtot").value("11.57"))
+            .andExpect(jsonPath("$.total.totalTributos").value("16.82"));
+    }
+
+    @Test
+    void entradaForaDoFormato_eErroDeItem_semConverterNotacaoCientifica() throws Exception {
+        // Notação científica com expoente gigante esgotaria a memória se fosse
+        // convertida: a validação de formato a rejeita antes.
+        mockMvc.perform(post(ENDPOINT).contentType(MediaType.APPLICATION_JSON)
+                .content(operacao("2027-04-15",
+                        item(1, "1000.00", "0.00", "1.25", "1E+100000000") + ","
+                                + item(2, "1E+100000000", "0.00", "1.25", "2.75") + ","
+                                + item(3, "1000.005", "0.00", "1.25", "2.75") + ","
+                                + item(4, "1000.00", "0.001", "1.25", "2.75") + ","
+                                + item(5, "1000.00", "0.00", "1234.5", "2.75") + ","
+                                + item(6, "1000.00", "0.00", "1.25", "-2.75") + ","
+                                + item(7, "1000.00", "0.00", "1.25", "2." + "1".repeat(34)) + ","
+                                + item(8, "1000.00", "0.00", "1.25", "2." + "1".repeat(35)))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.objetos[0].erros[0].code").value("VSN-005"))
+            .andExpect(jsonPath("$.objetos[0].erros[0].detail",
+                    org.hamcrest.Matchers.containsString("sem notação científica")))
+            .andExpect(jsonPath("$.objetos[1].erros[0].code").value("VSN-002"))
+            .andExpect(jsonPath("$.objetos[2].erros[0].code").value("VSN-002"))
+            .andExpect(jsonPath("$.objetos[3].erros[0].code").value("VSN-003"))
+            .andExpect(jsonPath("$.objetos[4].erros[0].code").value("VSN-007"))
+            .andExpect(jsonPath("$.objetos[5].erros[0].code").value("VSN-005"))
+            .andExpect(jsonPath("$.objetos[5].erros[0].detail",
+                    org.hamcrest.Matchers.containsString("não pode ser negativo")))
+            .andExpect(jsonPath("$.objetos[6].estadoItem").value("CALCULADO"))
+            .andExpect(jsonPath("$.objetos[7].erros[0].code").value("VSN-005"));
+    }
+
+    private static String operacao(String data, String itens) {
+        return """
+                {
+                  "id": "507f1f77bcf86cd799439011",
+                  "versao": "2.0.0",
+                  "data": "%s",
+                  "tpDoc": "55",
+                  "CRT": "1",
+                  "itens": [ %s ]
+                }
+                """.formatted(data, itens);
+    }
+
+    private static String item(int numero, String base, String vIs, String pIbs, String pCbs) {
+        return """
+                { "numero": %d, "cAtivSN": "01", "cClassTrib": "000001", "baseCalculo": "%s",
+                  "valorImpostoSeletivo": "%s", "pIBSSN": "%s", "pCBSSN": "%s" }
+                """.formatted(numero, base, vIs, pIbs, pCbs);
     }
 }

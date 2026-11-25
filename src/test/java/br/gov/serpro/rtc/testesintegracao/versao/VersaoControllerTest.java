@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +38,7 @@ class VersaoControllerTest {
                 .andExpect(jsonPath("$.versaoDb", Matchers.not(Matchers.emptyOrNullString())))
                 .andExpect(jsonPath("$.descricaoVersaoDb", Matchers.not(Matchers.emptyOrNullString())))
                 .andExpect(jsonPath("$.dataVersaoDb", Matchers.matchesPattern("\\d{4}-\\d{2}-\\d{2}")))
+                .andExpect(jsonPath("$.arquivoDb").value("calculadora-pro.db"))
                 .andExpect(jsonPath("$.ambiente").value("testes"));
     }
 

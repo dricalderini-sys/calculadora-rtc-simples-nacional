@@ -19,7 +19,7 @@ import lombok.Builder;
  * instalação online ({@code versao.url}) — por isso os campos são todos
  * anuláveis e a inclusão é {@code NON_NULL}.
  *
- * <p>Mantém {@code @Builder} (5 campos, construção parcial possível quando a
+ * <p>Mantém {@code @Builder} (6 campos, construção parcial possível quando a
  * origem não publica todos os campos).
  */
 @Builder
@@ -37,6 +37,10 @@ public record VersaoDomain(
 
         @Schema(name = "dataVersaoDb", description = "Data da versão do banco de dados", example = "2026-01-01")
         String dataVersaoDb,
+
+        @Schema(name = "arquivoDb", description = "Arquivo do banco de dados em uso: calculadora-pro.db (vigências "
+                + "corretas) ou calculadora-nonpro.db (vigências retroativas)", example = "calculadora-pro.db")
+        String arquivoDb,
 
         @Schema(name = "ambiente", description = "Ambiente da aplicação", example = "Online")
         String ambiente) {

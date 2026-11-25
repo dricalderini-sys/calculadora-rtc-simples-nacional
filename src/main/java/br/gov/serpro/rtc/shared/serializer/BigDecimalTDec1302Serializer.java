@@ -2,12 +2,11 @@ package br.gov.serpro.rtc.shared.serializer;
 
 import br.gov.serpro.rtc.shared.util.ArredondamentoUtils;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializerProvider;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.ValueSerializer;
 
 /**
  * Serializador para o tipo TDec1302 (até 13 inteiros e 2 decimais, sempre com 2 casas decimais).
@@ -17,10 +16,10 @@ import com.fasterxml.jackson.databind.SerializerProvider;
  * Thread-safe: delega para {@link ArredondamentoUtils#formatarMoeda(BigDecimal)}.
  * DecimalFormat não é thread-safe, mas o método formatarMoeda é sincronizado, garantindo segurança em ambientes multi-thread.
  */
-public class BigDecimalTDec1302Serializer extends JsonSerializer<BigDecimal> {
+public class BigDecimalTDec1302Serializer extends ValueSerializer<BigDecimal> {
 
     @Override
-    public void serialize(BigDecimal value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+    public void serialize(BigDecimal value, JsonGenerator gen, SerializationContext serializers) {
         if (value == null) {
             gen.writeNull();
         } else if (value.signum() < 0) {
