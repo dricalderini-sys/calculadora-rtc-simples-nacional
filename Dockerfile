@@ -5,12 +5,12 @@ WORKDIR /rr
 RUN mkdir -p ./calculadora/db && \
     mvn -B flyway:migrate -Dflyway.configFiles=./flyway/flyway-pro.conf
 
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /app
 COPY . .
 RUN mvn -B clean package -DskipTests
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 COPY --from=build /app/target/api-simples-nacional.jar app.jar
 COPY --from=db /rr/calculadora ./calculadora
